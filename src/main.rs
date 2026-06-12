@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(custom_test_frameworks)]
-#![test_runner(crate::test_runner)]
+#![test_runner(blog_os::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 mod serial;
 
@@ -30,12 +30,11 @@ pub fn _print(args: fmt::Arguments) {
 }
 
 #[cfg(test)]
-pub fn test_runner(tests: &[&dyn Fn()]) {
+pub fn test_runner(tests: &[&dyn Testable]) {
 
     serial_println!("Running {} tests", tests.len());
-    println!("Running {} tests", tests.len());
     for test in tests {
-        test();
+        test.run();
     }
 
     //exit the qemu by providing the exit code type of QemuExitCode, which is then prpovided to the port 0xf64 and wrote, which exits the QEMU
@@ -43,12 +42,28 @@ pub fn test_runner(tests: &[&dyn Fn()]) {
     //exit after all tests are ran
 }
 
+
+#[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
     loop {}
 }
 
+
+#[cfg(test)] 
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    blog_os::test_panic_handler(info)
+}
+
+#[cfg(not(test))]
+#[unsafe(no_mangle)]
+pub extern "C" fn _start() -> ! {
+    println!("Hello World{}", "!");
+
+    loop {}
+}
 
 #[cfg(test)]
 #[unsafe(no_mangle)]
@@ -60,10 +75,7 @@ pub extern "C" fn _start() -> ! {
 
 #[test_case]
 fn trivial_assertion() {
-    serial_print!("trivial assertion... ");
-    print!("trivial assertion... ");
     assert_eq!(1,1);
-    println!("[ok]")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,10 +94,20 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
     }
 }
 
+pub trait Testable {
+    fn run(&self) -> ();
+}
 
-
-
-
+impl<T> Testable for T
+where
+    T: Fn(),
+{
+    fn run(&self) {
+        serial_print!("{}...\t", core::any::type_name::<T>());
+        self();
+        serial_println!("[ok]");
+    }
+}
 
 
 

@@ -1,37 +1,35 @@
-use uart_16550::{Config, Uart16550Tty, backend::PioBackend};
-use spin::Mutex;
 use lazy_static::lazy_static;
+use spin::Mutex;
+use uart_16550::SerialPort;
 
-lazy_static { //allows us to use a exclusively mutable static reference
-    
-    pub static ref SERIAL1: Mutex<Uart16550Tty<PioBackend>>  = Mutex::new(unsafe {
-        Uart16550Tty::new_port(0x3F8, Config::default()).expect("failed to initilaze UART")
-    });
-}
-
-
-//prints to the host through the serial interface
-#[doc(hidden)]
-pub fn _print(args: ::core::fmt::Arguments) {
-    use core::fmt::Write;
-    SERIAL1.lock().write_fmt(args).expect("Printing to serial failed");
-}
-
-// Prints to the host through the serial interface 
-#[macro_export]
-macro_rules! serial_print {
-    ($($arg:tt)*) => {
-        $crate::serial::_print(format_args!($($arg)*));
+lazy_static! {
+    pub static ref SERIAL1: Mutex<SerialPort> = {
+        let mut serial_port = unsafe { SerialPort::new(0x3F8) };
+        serial_port.init();
+        Mutex::new(serial_port)
     };
 }
 
-/// Print to the host through the serial interface, appending a newline.
+#[doc(hidden)]
+pub fn _print(args: ::core::fmt::Arguments) {
+    use core::fmt::Write;
+    SERIAL1
+        .lock()
+        .write_fmt(args)
+        .expect("Printing to serial failed");
+}
+
+#[macro_export]
+macro_rules! serial_print {
+    ($($arg:tt)*) => {
+        $crate::serial::_print(format_args!($($arg)*))
+    };
+}
+
 #[macro_export]
 macro_rules! serial_println {
     () => ($crate::serial_print!("\n"));
-    ($fmt:expr) => ($crate::serial_print!(concat!($fmt, "/n")));
+    ($fmt:expr) => ($crate::serial_print!(concat!($fmt, "\n")));
     ($fmt:expr, $($arg:tt)*) => ($crate::serial_print!(
         concat!($fmt, "\n"), $($arg)*));
 }
-
-
