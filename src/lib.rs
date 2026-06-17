@@ -5,12 +5,18 @@
 
 //make public to make them usable outside our library; this is also requiired for making our println and serial)println macros usable since the y use the _print function of these  modules 
 #![reexport_test_harness_main = "test_main"]
-
+#![feature(abi_x86_interrupt)]
 use core::fmt;
 use core::panic::PanicInfo;
 
 pub mod serial;
 pub mod vga_buffer;
+
+pub mod gdt;
+
+pub mod interrupts;
+
+pub mod memory;
 
 #[macro_export]
 macro_rules! print {
@@ -25,11 +31,16 @@ macro_rules! println {
 
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
-    use core::fmt::Write;
-    vga_buffer::WRITER.lock().write_fmt(args).unwrap();
+    vga_buffer::_print(args);
 }
 
 
+
+#[cfg(test)]
+use bootloader::{entry_point, BootInfo};
+
+#[cfg(test)]
+entry_point!(test_kernel_main);
 
 pub trait Testable {
     fn run(&self) -> ();
@@ -56,16 +67,26 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
     serial_println!("[failed]\n");
     serial_println!("Error: {}\n", info);
     exit_qemu(QemuExitCode::Failed);
-    loop {}
+    hlt_loop();
 }
 
 /// Entry point for `cargo test`
 #[cfg(test)]
-#[unsafe(no_mangle)]
-pub extern "C" fn _start() -> ! {
+fn test_kernel_main(_boot_info: &'static BootInfo) -> ! {  // this is the start function of the cargo test
+    //only thing that changed is that we need no longer the extern "C" or the #[unsafe(no_mangle)]
+    //we were able to do this because of the entry_point! macro provided by the bootloader; this kernel entry point is only used here in test
+    init(); // new
     test_main();
-    loop {}
+    hlt_loop();
 }
+
+#[test_case]
+fn test_breakpoint_exception() { // this function essentionally just uses the x86_64 library to call a breakpoint exception to test the interrupt_mod we made
+    //invoke a breakpoiint exception 
+    x86_64::instructions::interrupts::int3();
+}
+
+
 
 #[cfg(test)]
 #[panic_handler]
@@ -89,3 +110,21 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
         port.write(exit_code as u32);
     }
 }
+pub fn init() {
+    gdt::init();
+    interrupts::init_idt();
+    unsafe {
+        interrupts::PICS.lock().initialize();
+        // Unmask timer (IRQ 0) and keyboard (IRQ 1): clear bits 0 and 1 → 0xFC
+        interrupts::PICS.lock().write_masks(0xFC, 0xFF);
+    }
+    x86_64::instructions::interrupts::enable();
+}
+
+
+pub fn hlt_loop() -> ! {
+    loop {
+        x86_64::instructions::hlt();
+    }
+}
+
