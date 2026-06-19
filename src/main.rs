@@ -10,46 +10,43 @@ use bootloader::{BootInfo, entry_point};
 
 
 extern crate alloc;
-use alloc::boxed::Box;
+use alloc::{boxed::Box, rc::Rc, vec, vec::Vec};
 
 
 
 entry_point!(kernel_main); // Type checks the start function so that a comilation error occurs when we use a wrong function signature, for example by adding an argument or changing the argument type 
 //no longer need the no_mangle or the extern "C" anymore because kernel_main defines the start point at a lower level where this is implied
 fn kernel_main(boot_info: &'static BootInfo) -> ! {
-
-
-
     use blog_os::memory;
-    use x86_64::{structures::paging::Page, VirtAddr};
-
+    use x86_64::VirtAddr;
     use blog_os::memory::BootInfoFrameAllocator;
-   
     println!("Hello World{}", "!");
-
     blog_os::init();
-
-
-
-
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset); // we obtain the physical memory offset from the bootloader
     let mut mapper = unsafe { memory::init(phys_mem_offset) };
     let mut frame_allocator = unsafe { BootInfoFrameAllocator::init(&boot_info.memory_map)};
+    blog_os::allocator::init_heap(&mut mapper, &mut frame_allocator)
+        .expect("heap initialization failed");
 
-    //maps an unused page 
+    //
+    let heap_value = Box::new(41);
+    println!("heap_value at {:p}", heap_value);
 
-    let page = Page::containing_address(VirtAddr::new(0)); //this is the start of the bootloader, always has (or is able to have) a page already
-    memory::create_example_mapping(page, &mut mapper, &mut frame_allocator);
+     // create a dynamically sized vector
+     let mut vec = Vec::new();
+     for i in 0..500 {
+         vec.push(i);
+     }
+     println!("vec at {:p}", vec.as_slice());
+ 
+     // create a reference counted vector -> will be freed when count reaches 0
+     let reference_counted = Rc::new(vec![1, 2, 3]);
+     let cloned_reference = reference_counted.clone();
+     println!("current reference count is {}", Rc::strong_count(&cloned_reference));
+     core::mem::drop(reference_counted);
+     println!("reference count is {} now", Rc::strong_count(&cloned_reference));
 
 
-    //write the string 'New!' to the screen through the new mapping
-    let page_ptr: *mut u64 = page.start_address().as_mut_ptr();
-    unsafe { page_ptr.offset(400).write_volatile(0x_f021_f077_f065_f04e)};
-
-
-    let x = Box::new(41);
-
-     
     
     #[cfg(test)] //testing main for cargo test test_main();
     test_main();
