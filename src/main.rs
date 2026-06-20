@@ -73,16 +73,21 @@ fn panic(info: &PanicInfo) -> ! {
 }
 
 
+async fn async_number() -> u32 { //async_number is a async fn so the compiler transforms it into a statemachine that implements the Future trait.
+    //returns Poll::Ready(42)
+    42
+}
 
+async fn example_task() {
+    let number = async_number().await;
+    println!("async number: {}", number);
+}
 
 
 
 
 
 /*
-
-
-
 
 
 
