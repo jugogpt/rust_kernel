@@ -7,12 +7,13 @@
 use core::panic::PanicInfo;
 use blog_os::println;
 use bootloader::{BootInfo, entry_point};
+use blog_os::task::keyboard; 
 
 
 extern crate alloc;
 use alloc::{boxed::Box, rc::Rc, vec, vec::Vec};
 
-use blog_os::task::{Task, simple_executor::SimpleExecutor};
+use blog_os::task::{executor::Executor, Task};
 
 entry_point!(kernel_main); // Type checks the start function so that a comilation error occurs when we use a wrong function signature, for example by adding an argument or changing the argument type 
 //no longer need the no_mangle or the extern "C" anymore because kernel_main defines the start point at a lower level where this is implied
@@ -47,16 +48,10 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
      println!("reference count is {} now", Rc::strong_count(&cloned_reference));
 
 
-     let mut executor = SimpleExecutor::new();
-     executor.spawn(Task::new(example_task()));
-     executor.run();
-
-    #[cfg(test)] //testing main for cargo test test_main();
-    test_main();
-    println!("No crash!");
-    blog_os::hlt_loop();
-
-    
+    let mut executor = Executor::new();
+    executor.spawn(Task::new(example_task()));
+    executor.spawn(Task::new(keyboard::print_keypresses()));
+    executor.run();
 }
 
 
